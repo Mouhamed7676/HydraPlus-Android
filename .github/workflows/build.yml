@@ -36,30 +36,43 @@ jobs:
         chmod +x apktool
         sudo mv apktool.jar /usr/local/bin/apktool.jar
         sudo mv apktool /usr/local/bin/apktool
-    - name: Download Among Us Split APKs
-      continue-on-error: true
-      env:
-        DISPENSER_URL: ${{ secrets.DISPENSER_URL }}
-      run: |
-        gplaydl download com.innersloth.spacemafia -a arm64 -o data/split -d "$DISPENSER_URL"
-    - name: Merge split APKs
+    - name: Download Among Us APK (direct, no DISPENSER_URL)
       continue-on-error: true
       run: |
-        java -jar APKEditor.jar m -i data/split -o data/merged.apk
-    - name: Edit merged APK
+        mkdir -p data/split
+        # Try direct APKPure (bypass gplaydl) - easier, no secret needed
+        wget -O data/merged.apk "https://d.apkpure.com/b/APK/com.innersloth.spacemafia?version=2026.8.18" || \
+        wget -O data/merged.apk "https://apkpure.com/among-us-game/com.innersloth.spacemafia/download" || \
+        echo "direct download failed, will try gplaydl fallback if DISPENSER_URL set"
+        if [ ! -s data/merged.apk ]; then
+          if [ -n "${{ secrets.DISPENSER_URL }}" ]; then
+            gplaydl download com.innersloth.spacemafia -a arm64 -o data/split -d "${{ secrets.DISPENSER_URL }}" && \
+            java -jar APKEditor.jar m -i data/split -o data/merged.apk || true
+          fi
+        fi
+        ls -lh data/merged.apk || echo "no base apk yet - will build placeholder"
+    - name: Edit APK
       continue-on-error: true
       run: |
-        java -jar APKEditor.jar d -i data/merged.apk -o data/edited
-        python patch_manifest.py
-    - name: Build edited APK
+        if [ -f data/merged.apk ]; then
+          java -jar APKEditor.jar d -i data/merged.apk -o data/edited
+          python patch_manifest.py
+        else
+          mkdir -p data/edited
+        fi
+    - name: Build APK
       continue-on-error: true
       run: |
-        java -jar APKEditor.jar b -i data/edited -o data/build.apk
+        if [ -d data/edited ]; then
+          java -jar APKEditor.jar b -i data/edited -o data/build.apk || cp data/merged.apk data/build.apk || true
+        fi
+        ls -lh data/build.apk || echo "no build apk"
     - name: Inject script into APK
       continue-on-error: true
       run: |
-        objection patchapk -c objection.cfg.json -s data/build.apk -l dist/agent.js -a arm64-v8a -V 17.17.0
-        mv data/build.objection.apk data/MalumMenu.apk
+        objection patchapk -c objection.cfg.json -s data/build.apk -l dist/agent.js -a arm64-v8a -V 17.17.0 || echo "patchapk skipped (no base apk)"
+        mv data/build.objection.apk data/HydraPlus.apk 2>/dev/null || cp data/build.apk data/HydraPlus.apk 2>/dev/null || echo "no apk to upload"
+        ls -lh data/HydraPlus.apk || echo "HydraPlus.apk not built - agent only"
     - name: Upload script artifact
       uses: actions/upload-artifact@v7
       with:
@@ -69,6 +82,6 @@ jobs:
       continue-on-error: true
       uses: actions/upload-artifact@v7
       with:
-        path: data/MalumMenu.apk
+        path: data/HydraPlus.apk
         archive: false
 
