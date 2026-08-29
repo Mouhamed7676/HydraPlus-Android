@@ -40,11 +40,13 @@ jobs:
       continue-on-error: true
       run: |
         mkdir -p data/split
-        # Try direct APKPure (bypass gplaydl) - easier, no secret needed
-        wget -O data/merged.apk "https://d.apkpure.com/b/APK/com.innersloth.spacemafia?version=2026.8.18" || \
-        wget -O data/merged.apk "https://apkpure.com/among-us-game/com.innersloth.spacemafia/download" || \
-        echo "direct download failed, will try gplaydl fallback if DISPENSER_URL set"
-        if [ ! -s data/merged.apk ]; then
+        # Direct APK download - try multiple mirrors with browser UA to bypass CF
+        curl -L -A "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36" -o data/merged.apk "https://d.apkpure.com/b/APK/com.innersloth.spacemafia?version=2026.8.18" || true
+        if [ ! -s data/merged.apk ] || [ $(stat -c%s data/merged.apk 2>/dev/null || echo 0) -lt 1000000 ]; then
+          curl -L -A "Mozilla/5.0" -o data/merged.apk "https://download.apkpure.com/b/APK/Y29tLmlubmVyc2xvdGguc3BhY2VtYWZpYQ?version=2026.8.18" || true
+        fi
+        if [ ! -s data/merged.apk ] || [ $(stat -c%s data/merged.apk 2>/dev/null || echo 0) -lt 1000000 ]; then
+          echo "direct download failed, trying gplaydl fallback if DISPENSER_URL set"
           if [ -n "${{ secrets.DISPENSER_URL }}" ]; then
             gplaydl download com.innersloth.spacemafia -a arm64 -o data/split -d "${{ secrets.DISPENSER_URL }}" && \
             java -jar APKEditor.jar m -i data/split -o data/merged.apk || true
@@ -84,4 +86,12 @@ jobs:
       with:
         path: data/HydraPlus.apk
         archive: false
+    - name: Create GitHub Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          data/HydraPlus.apk
+          dist/agent.js
+        generate_release_notes: true
 
