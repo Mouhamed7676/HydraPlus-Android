@@ -2,6 +2,9 @@ name: CI
 
 on: [ "push", "pull_request" ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -56,11 +59,14 @@ jobs:
     - name: Edit APK
       continue-on-error: true
       run: |
-        if [ -f data/merged.apk ]; then
+        if [ -f data/merged.apk ] && file data/merged.apk | grep -q "Zip archive"; then
           java -jar APKEditor.jar d -i data/merged.apk -o data/edited
           python patch_manifest.py
         else
+          echo "merged.apk not valid zip, skipping decompile"
           mkdir -p data/edited
+          # fallback: create placeholder build.apk from agent only
+          cp data/merged.apk data/build.apk 2>/dev/null || true
         fi
     - name: Build APK
       continue-on-error: true
